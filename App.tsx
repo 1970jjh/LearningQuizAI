@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QuizConfig, Slide, QuizQuestion, ExtractedContent } from './types';
 import { processFileToSlides } from './services/pdfService';
-import { generateQuizQuestions, generateQuizFromText } from './services/geminiService';
+import { generateQuizQuestions, generateQuizFromText, generateQuizFromYoutube } from './services/geminiService';
 import { PageSelector } from './components/PageSelector';
 import { QuizConfigPanel } from './components/QuizConfig.tsx';
 import { QuizEditor } from './components/QuizEditor.tsx';
@@ -199,6 +199,7 @@ const App: React.FC = () => {
 
   // URL 관련 상태
   const [extractedContent, setExtractedContent] = useState<ExtractedContent | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
   const [isExtractingUrl, setIsExtractingUrl] = useState(false);
 
   // Dark Mode Effect
@@ -291,8 +292,24 @@ const App: React.FC = () => {
       setSlides(prev => prev.map(s => ({ ...s, selected: select })));
   };
 
+  // 유튜브 URL 여부 확인
+  const isYoutubeUrl = (url: string) => {
+    return url.includes('youtube.com') || url.includes('youtu.be');
+  };
+
   // URL 콘텐츠 추출 핸들러
   const handleUrlSubmit = async (url: string) => {
+    // 기존 상태 초기화
+    setExtractedContent(null);
+    setYoutubeUrl(null);
+
+    // 유튜브 URL인 경우 - API 호출 없이 바로 저장 (Gemini가 직접 분석)
+    if (isYoutubeUrl(url)) {
+      setYoutubeUrl(url);
+      return;
+    }
+
+    // 웹페이지 URL인 경우 - API로 콘텐츠 추출
     setIsExtractingUrl(true);
     try {
       const response = await fetch('/api/extract-content', {
@@ -322,11 +339,16 @@ const App: React.FC = () => {
       try {
           let qs: QuizQuestion[];
 
-          // 추출된 URL 콘텐츠가 있으면 텍스트 기반 퀴즈 생성
-          if (extractedContent) {
+          // 유튜브 URL이 있으면 Gemini가 직접 분석
+          if (youtubeUrl) {
+            qs = await generateQuizFromYoutube(youtubeUrl, quizConfig);
+          }
+          // 웹페이지 콘텐츠가 있으면 텍스트 기반 퀴즈 생성
+          else if (extractedContent) {
             qs = await generateQuizFromText(extractedContent, quizConfig);
-          } else {
-            // 슬라이드 기반 퀴즈 생성
+          }
+          // 슬라이드 기반 퀴즈 생성
+          else {
             qs = await generateQuizQuestions(slides, quizConfig);
           }
 
@@ -388,7 +410,13 @@ const App: React.FC = () => {
                     onDrop={handleDrop}
                     onUrlSubmit={handleUrlSubmit}
                     isExtractingUrl={isExtractingUrl}
-                    extractedContent={extractedContent ? { type: extractedContent.type, title: extractedContent.title } : null}
+                    extractedContent={
+                      youtubeUrl
+                        ? { type: 'youtube' as const, title: youtubeUrl }
+                        : extractedContent
+                          ? { type: extractedContent.type, title: extractedContent.title }
+                          : null
+                    }
                 />
             </div>
 
@@ -399,7 +427,7 @@ const App: React.FC = () => {
                     onChange={setQuizConfig}
                     onGenerate={handleGenerateQuiz}
                     isGenerating={isGenerating}
-                    hasSlides={slides.some(s => s.selected) || !!extractedContent}
+                    hasSlides={slides.some(s => s.selected) || !!extractedContent || !!youtubeUrl}
                     isLoggedIn={isLoggedIn}
                     onLogin={() => setIsLoggedIn(true)}
                 />
