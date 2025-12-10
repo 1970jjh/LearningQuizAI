@@ -175,6 +175,7 @@ const App: React.FC = () => {
   const [slides, setSlides] = useState<Slide[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'live'>('editor');
   
   // Sidebar state
@@ -205,19 +206,76 @@ const App: React.FC = () => {
     }
   }, [darkMode]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // 공통 파일 처리 함수 (기존 슬라이드에 추가)
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const validFiles = fileArray.filter(file =>
+      file.type === 'application/pdf' || file.type.startsWith('image/')
+    );
+
+    if (validFiles.length === 0) {
+      alert('PDF 또는 이미지 파일만 업로드 가능합니다.');
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      const results = await Promise.all(Array.from(files).map((file: File) => processFileToSlides(file)));
-      const allSlides = results.flat().map((s, i) => ({ ...s, pageIndex: i + 1 }));
-      setSlides(allSlides);
+      const results = await Promise.all(validFiles.map((file: File) => processFileToSlides(file)));
+      const newSlides = results.flat();
+      setSlides(prev => {
+        const startIndex = prev.length;
+        const indexedNewSlides = newSlides.map((s, i) => ({ ...s, pageIndex: startIndex + i + 1 }));
+        return [...prev, ...indexedNewSlides];
+      });
     } catch (error) {
       alert('파일 처리 실패');
     } finally {
       setIsProcessing(false);
-      e.target.value = '';
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processFiles(files);
+    e.target.value = '';
+  };
+
+  // 드래그 앤 드롭 핸들러
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isLoggedIn || isProcessing) return;
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 자식 요소로 이동할 때 dragLeave가 발생하지 않도록 체크
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!isLoggedIn || isProcessing) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await processFiles(files);
     }
   };
 
@@ -276,14 +334,19 @@ const App: React.FC = () => {
         >
             {/* COLUMN 1: File Upload & Slides (320px) */}
             <div className="w-[320px] shrink-0 h-full border-r border-slate-200 dark:border-slate-800">
-                <PageSelector 
-                    slides={slides} 
-                    onToggleSlide={toggleSlideSelection} 
+                <PageSelector
+                    slides={slides}
+                    onToggleSlide={toggleSlideSelection}
                     onSelectAll={handleSelectAll}
-                    onFileUpload={handleFileUpload} 
-                    isProcessing={isProcessing} 
+                    onFileUpload={handleFileUpload}
+                    isProcessing={isProcessing}
                     isLoggedIn={isLoggedIn}
                     onLogin={() => setIsLoggedIn(true)}
+                    isDragging={isDragging}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
                 />
             </div>
 
