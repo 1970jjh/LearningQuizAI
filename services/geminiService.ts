@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Slide, QuizConfig, QuizQuestion, WinnerPoster, GeneratedImage } from "../types";
+import { Slide, QuizConfig, QuizQuestion, WinnerPoster, GeneratedImage, ExtractedContent } from "../types";
 
 const getBase64FromDataUrl = (dataUrl: string): string => {
   return dataUrl.split(',')[1];
@@ -308,4 +308,80 @@ export const generateSlideVariations = async (
 
   const results = await Promise.all(promises);
   return results.filter((r): r is GeneratedImage => r !== null);
+};
+
+// 텍스트 콘텐츠 기반 퀴즈 생성 (웹페이지/유튜브)
+export const generateQuizFromText = async (
+  extractedContent: ExtractedContent,
+  config: QuizConfig
+): Promise<QuizQuestion[]> => {
+  await ensureApiKey();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  const sourceType = extractedContent.type === 'youtube' ? '유튜브 영상 자막' : '웹페이지 콘텐츠';
+
+  const prompt = `
+  Create a learning quiz based on the following ${sourceType}.
+
+  Source Title: ${extractedContent.title}
+
+  Content:
+  """
+  ${extractedContent.content}
+  """
+
+  Configuration:
+  - Multiple Choice Questions: ${config.multipleChoiceCount}
+  - Short Answer Questions: ${config.shortAnswerCount}
+  - Difficulty: ${config.difficulty}
+
+  Rules:
+  1. Questions must be strictly based on the content provided above.
+  2. The primary language must be KOREAN (한국어).
+  3. If an English term is crucial, use the format: "Korean (English)".
+  4. For the 'explanation', provide a detailed reasoning in Korean.
+  5. CRITICAL: When referring to the source in the explanation, use this exact format: "[${extractedContent.type === 'youtube' ? '영상 내용' : '웹페이지 내용'} 참고]".
+  6. Output must be a valid JSON array.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: TEXT_MODEL_NAME,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING, enum: ['multiple-choice', 'short-answer'] },
+              question: { type: Type.STRING },
+              options: { type: Type.ARRAY, items: { type: Type.STRING } },
+              correctAnswer: { type: Type.STRING },
+              explanation: { type: Type.STRING },
+            },
+            required: ['type', 'question', 'correctAnswer', 'explanation']
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No response from AI");
+
+    const rawQuestions = JSON.parse(text);
+
+    return rawQuestions.map((q: any) => ({
+      ...q,
+      id: crypto.randomUUID(),
+      timeLimit: 15,
+      options: q.type === 'short-answer' ? [] : q.options
+    }));
+
+  } catch (error: any) {
+    console.error("Text Quiz Gen Error:", error);
+    throw error;
+  }
 };

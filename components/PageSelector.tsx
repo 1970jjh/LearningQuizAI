@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Slide } from '../types';
-import { CheckCircle2, FileUp, CheckSquare, Square, Lock, Upload } from 'lucide-react';
+import { CheckCircle2, FileUp, CheckSquare, Square, Lock, Upload, Link2, Youtube, Globe, Loader2 } from 'lucide-react';
 
 interface PageSelectorProps {
   slides: Slide[];
@@ -16,6 +16,10 @@ interface PageSelectorProps {
   onDragLeave: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  // URL 관련 props
+  onUrlSubmit: (url: string) => Promise<void>;
+  isExtractingUrl: boolean;
+  extractedContent: { type: 'webpage' | 'youtube'; title: string } | null;
 }
 
 export const PageSelector: React.FC<PageSelectorProps> = ({
@@ -30,7 +34,27 @@ export const PageSelector: React.FC<PageSelectorProps> = ({
   onDragLeave,
   onDragOver,
   onDrop,
+  onUrlSubmit,
+  isExtractingUrl,
+  extractedContent,
 }) => {
+  const [urlInput, setUrlInput] = useState('');
+
+  const handleUrlSubmit = async () => {
+    if (!urlInput.trim()) return;
+    await onUrlSubmit(urlInput.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isExtractingUrl) {
+      handleUrlSubmit();
+    }
+  };
+
+  const isYoutubeUrl = (url: string) => {
+    return url.includes('youtube.com') || url.includes('youtu.be');
+  };
+
   return (
     <div
       className="flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-colors relative"
@@ -92,7 +116,74 @@ export const PageSelector: React.FC<PageSelectorProps> = ({
             disabled={isProcessing || !isLoggedIn}
           />
         </label>
-        
+
+        {/* URL 입력 섹션 */}
+        <div className="mt-4">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-2">
+            <Link2 className="w-4 h-4" /> 웹페이지 / 유튜브 URL
+            {urlInput && (
+              isYoutubeUrl(urlInput) ? (
+                <Youtube className="w-4 h-4 text-red-500" />
+              ) : (
+                <Globe className="w-4 h-4 text-blue-500" />
+              )
+            )}
+          </h3>
+
+          <div className={`flex gap-2 ${!isLoggedIn ? 'opacity-50 pointer-events-none' : ''}`}>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="https://www.youtube.com/watch?v="
+              disabled={!isLoggedIn || isExtractingUrl}
+              className="flex-1 px-3 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-800 dark:text-slate-100"
+            />
+            <button
+              onClick={handleUrlSubmit}
+              disabled={!isLoggedIn || isExtractingUrl || !urlInput.trim()}
+              className={`px-3 py-2.5 rounded-lg font-bold transition-all flex items-center justify-center min-w-[44px]
+                ${isExtractingUrl
+                  ? 'bg-slate-200 dark:bg-slate-700 cursor-wait'
+                  : urlInput.trim()
+                    ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-200'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                }`}
+            >
+              {isExtractingUrl ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Link2 className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+            웹페이지 또는 유튜브 영상 내용을 분석하여 퀴즈 생성
+          </p>
+
+          {/* 추출된 콘텐츠 표시 */}
+          {extractedContent && (
+            <div className={`mt-3 p-3 rounded-lg border ${
+              extractedContent.type === 'youtube'
+                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                {extractedContent.type === 'youtube' ? (
+                  <Youtube className="w-4 h-4 text-red-500 shrink-0" />
+                ) : (
+                  <Globe className="w-4 h-4 text-blue-500 shrink-0" />
+                )}
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
+                  {extractedContent.title}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {slides.length > 0 && (
             <div className="mt-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
