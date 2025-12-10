@@ -206,7 +206,7 @@ const App: React.FC = () => {
     }
   }, [darkMode]);
 
-  // 공통 파일 처리 함수
+  // 공통 파일 처리 함수 (기존 슬라이드에 추가)
   const processFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     const validFiles = fileArray.filter(file =>
@@ -221,8 +221,12 @@ const App: React.FC = () => {
     setIsProcessing(true);
     try {
       const results = await Promise.all(validFiles.map((file: File) => processFileToSlides(file)));
-      const allSlides = results.flat().map((s, i) => ({ ...s, pageIndex: i + 1 }));
-      setSlides(allSlides);
+      const newSlides = results.flat();
+      setSlides(prev => {
+        const startIndex = prev.length;
+        const indexedNewSlides = newSlides.map((s, i) => ({ ...s, pageIndex: startIndex + i + 1 }));
+        return [...prev, ...indexedNewSlides];
+      });
     } catch (error) {
       alert('파일 처리 실패');
     } finally {
