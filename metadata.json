@@ -1,0 +1,5 @@
+{
+  "name": "PDF to 학습퀴즈 생성 AI - JJ CREATIVE",
+  "description": "PDF / 이미지 파일을 업로드 한 후 학습퀴즈를 생성하고, 학습자를 초대하여 슬라이도 퀴즈처럼 학습퀴즈가 진행되는 리얼타임 학습 앱",
+  "requestFramePermissions": []
+}
