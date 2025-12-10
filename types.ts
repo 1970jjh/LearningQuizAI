@@ -88,3 +88,11 @@ export interface GenerationConfig {
   selectedStyleId?: string;
   customStyleImage?: string;
 }
+
+export interface ExtractedContent {
+  success: boolean;
+  type: 'webpage' | 'youtube';
+  title: string;
+  content: string;
+  error?: string;
+}

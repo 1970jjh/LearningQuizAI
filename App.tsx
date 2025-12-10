@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { QuizConfig, Slide, QuizQuestion } from './types';
+import { QuizConfig, Slide, QuizQuestion, ExtractedContent } from './types';
 import { processFileToSlides } from './services/pdfService';
-import { generateQuizQuestions } from './services/geminiService';
+import { generateQuizQuestions, generateQuizFromText, generateQuizFromYoutube } from './services/geminiService';
 import { PageSelector } from './components/PageSelector';
 import { QuizConfigPanel } from './components/QuizConfig.tsx';
 import { QuizEditor } from './components/QuizEditor.tsx';
@@ -197,6 +197,11 @@ const App: React.FC = () => {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // URL 관련 상태
+  const [extractedContent, setExtractedContent] = useState<ExtractedContent | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
+  const [isExtractingUrl, setIsExtractingUrl] = useState(false);
+
   // Dark Mode Effect
   useEffect(() => {
     if (darkMode) {
@@ -287,10 +292,66 @@ const App: React.FC = () => {
       setSlides(prev => prev.map(s => ({ ...s, selected: select })));
   };
 
+  // 유튜브 URL 여부 확인
+  const isYoutubeUrl = (url: string) => {
+    return url.includes('youtube.com') || url.includes('youtu.be');
+  };
+
+  // URL 콘텐츠 추출 핸들러
+  const handleUrlSubmit = async (url: string) => {
+    // 기존 상태 초기화
+    setExtractedContent(null);
+    setYoutubeUrl(null);
+
+    // 유튜브 URL인 경우 - API 호출 없이 바로 저장 (Gemini가 직접 분석)
+    if (isYoutubeUrl(url)) {
+      setYoutubeUrl(url);
+      return;
+    }
+
+    // 웹페이지 URL인 경우 - API로 콘텐츠 추출
+    setIsExtractingUrl(true);
+    try {
+      const response = await fetch('/api/extract-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        alert(result.error || '콘텐츠 추출 실패');
+        return;
+      }
+
+      setExtractedContent(result);
+    } catch (error) {
+      console.error('URL extraction error:', error);
+      alert('URL 콘텐츠 추출 중 오류가 발생했습니다.');
+    } finally {
+      setIsExtractingUrl(false);
+    }
+  };
+
   const handleGenerateQuiz = async () => {
       setIsGenerating(true);
       try {
-          const qs = await generateQuizQuestions(slides, quizConfig);
+          let qs: QuizQuestion[];
+
+          // 유튜브 URL이 있으면 Gemini가 직접 분석
+          if (youtubeUrl) {
+            qs = await generateQuizFromYoutube(youtubeUrl, quizConfig);
+          }
+          // 웹페이지 콘텐츠가 있으면 텍스트 기반 퀴즈 생성
+          else if (extractedContent) {
+            qs = await generateQuizFromText(extractedContent, quizConfig);
+          }
+          // 슬라이드 기반 퀴즈 생성
+          else {
+            qs = await generateQuizQuestions(slides, quizConfig);
+          }
+
           setQuestions(qs);
           setActiveTab('editor');
       } catch (e) {
@@ -347,17 +408,26 @@ const App: React.FC = () => {
                     onDragLeave={handleDragLeave}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
+                    onUrlSubmit={handleUrlSubmit}
+                    isExtractingUrl={isExtractingUrl}
+                    extractedContent={
+                      youtubeUrl
+                        ? { type: 'youtube' as const, title: youtubeUrl }
+                        : extractedContent
+                          ? { type: extractedContent.type, title: extractedContent.title }
+                          : null
+                    }
                 />
             </div>
 
             {/* COLUMN 2: Admin Login & Config (320px) */}
             <div className="w-[320px] shrink-0 h-full border-r border-slate-200 dark:border-slate-800">
-                <QuizConfigPanel 
-                    config={quizConfig} 
-                    onChange={setQuizConfig} 
+                <QuizConfigPanel
+                    config={quizConfig}
+                    onChange={setQuizConfig}
                     onGenerate={handleGenerateQuiz}
                     isGenerating={isGenerating}
-                    hasSlides={slides.some(s => s.selected)}
+                    hasSlides={slides.some(s => s.selected) || !!extractedContent || !!youtubeUrl}
                     isLoggedIn={isLoggedIn}
                     onLogin={() => setIsLoggedIn(true)}
                 />
